@@ -135,19 +135,19 @@ server {
   location /api/ {
     proxy_pass http://127.0.0.1:5000/api/;
     proxy_http_version 1.1;
-    proxy_set_header Host \$host;
-    proxy_set_header X-Real-IP \$remote_addr;
-    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header Host \\$host;
+    proxy_set_header X-Real-IP \\$remote_addr;
+    proxy_set_header X-Forwarded-For \\$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \\$scheme;
   }
 
   location /metrics {
     proxy_pass http://127.0.0.1:5000/metrics;
-    proxy_set_header Host \$host;
+    proxy_set_header Host \\$host;
   }
 
   location / {
-    try_files \$uri /index.html;
+    try_files \\$uri /index.html;
   }
 }
 NGINX
