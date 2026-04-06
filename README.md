@@ -117,9 +117,11 @@ Stages:
 6. Restart backend with PM2 and configure Nginx
 
 Required Jenkins credential:
-- `azure-vm-ssh` (SSH private key for Azure VM)
 - `attendance-jwt-secret` (secret text for JWT)
 - `attendance-mongo-uri` (secret text for MongoDB URI)
+
+Jenkins deploy key file required on Jenkins host:
+- `/var/lib/jenkins/.ssh/ci_deploy_key`
 
 Azure automation guide:
 - `docs/azure-jenkins.md`

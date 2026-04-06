@@ -59,15 +59,20 @@ pipeline {
     stage('Deploy to Azure VM (No Docker)') {
       steps {
         withCredentials([
-          sshUserPrivateKey(credentialsId: 'azure-vm-ssh', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER'),
           string(credentialsId: 'attendance-jwt-secret', variable: 'APP_JWT_SECRET'),
           string(credentialsId: 'attendance-mongo-uri', variable: 'APP_MONGO_URI')
         ]) {
           sh """
+            DEPLOY_KEY="/var/lib/jenkins/.ssh/ci_deploy_key"
+            if [ ! -f "$DEPLOY_KEY" ]; then
+              echo "Deploy key not found at $DEPLOY_KEY"
+              exit 1
+            fi
+
             MONGO_URI_B64=\$(printf '%s' "$APP_MONGO_URI" | base64 | tr -d '\\n')
             JWT_SECRET_B64=\$(printf '%s' "$APP_JWT_SECRET" | base64 | tr -d '\\n')
 
-            ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ${params.AZURE_VM_USER}@${params.AZURE_VM_HOST} "
+            ssh -i "$DEPLOY_KEY" -o StrictHostKeyChecking=no ${params.AZURE_VM_USER}@${params.AZURE_VM_HOST} "
               set -e
 
               if ! command -v node >/dev/null 2>&1; then
@@ -159,13 +164,12 @@ NGINX
 
     stage('Post Deploy Check') {
       steps {
-        withCredentials([sshUserPrivateKey(credentialsId: 'azure-vm-ssh', keyFileVariable: 'SSH_KEY')]) {
-          sh """
-            ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ${params.AZURE_VM_USER}@${params.AZURE_VM_HOST} '
-              curl -fsS http://localhost/api/health
-            '
-          """
-        }
+        sh """
+          DEPLOY_KEY="/var/lib/jenkins/.ssh/ci_deploy_key"
+          ssh -i "$DEPLOY_KEY" -o StrictHostKeyChecking=no ${params.AZURE_VM_USER}@${params.AZURE_VM_HOST} '
+            curl -fsS http://localhost/api/health
+          '
+        """
       }
     }
   }

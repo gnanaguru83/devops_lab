@@ -31,15 +31,15 @@ docker compose up -d --build
 ## Jenkins Deployment
 
 1. Configure Jenkins credentials:
-- `azure-vm-ssh` (SSH key for Azure VM)
 - `attendance-jwt-secret` (Secret text for JWT)
 - `attendance-mongo-uri` (Secret text for MongoDB URI)
-2. Create Pipeline job and point to `jenkins/Jenkinsfile`.
-3. Set parameters:
+2. Ensure Jenkins host has deploy key at `/var/lib/jenkins/.ssh/ci_deploy_key` and that public key is in `/home/azureuser/.ssh/authorized_keys` on target VM.
+3. Create Pipeline job and point to `jenkins/Jenkinsfile`.
+4. Set parameters:
 - `AZURE_VM_HOST`
 - `AZURE_VM_USER`
 - `AZURE_VM_APP_DIR`
 - `GIT_REPO_URL`
 - `DEPLOY_BRANCH`
-4. Run build; Jenkins will test, build frontend, and deploy to Azure VM with PM2 + Nginx.
-5. Detailed Azure setup: `docs/azure-jenkins.md`.
+5. Run build; Jenkins will test, build frontend, and deploy to Azure VM with PM2 + Nginx.
+6. Detailed Azure setup: `docs/azure-jenkins.md`.

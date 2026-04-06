@@ -36,9 +36,12 @@ Install:
 ## 3) Jenkins Credentials
 
 Create these IDs exactly:
-1. `azure-vm-ssh` (SSH Username with private key for `azureuser`)
-2. `attendance-jwt-secret` (Secret text)
-3. `attendance-mongo-uri` (Secret text, MongoDB connection string)
+1. `attendance-jwt-secret` (Secret text)
+2. `attendance-mongo-uri` (Secret text, MongoDB connection string)
+
+Deploy key file required on Jenkins host:
+- `/var/lib/jenkins/.ssh/ci_deploy_key`
+- Public key must be present in `/home/azureuser/.ssh/authorized_keys`
 
 ## 4) Pipeline Job
 
