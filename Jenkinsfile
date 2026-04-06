@@ -62,70 +62,78 @@ pipeline {
           string(credentialsId: 'attendance-jwt-secret', variable: 'APP_JWT_SECRET'),
           string(credentialsId: 'attendance-mongo-uri', variable: 'APP_MONGO_URI')
         ]) {
-          sh """
-            DEPLOY_KEY="/var/lib/jenkins/.ssh/ci_deploy_key"
-            if [ ! -f "\$DEPLOY_KEY" ]; then
-              echo "Deploy key not found at \$DEPLOY_KEY"
-              exit 1
-            fi
-            if [ -z "\$APP_JWT_SECRET" ]; then
-              echo "Jenkins credential attendance-jwt-secret is empty"
-              exit 1
-            fi
-            if [ -z "\$APP_MONGO_URI" ]; then
-              echo "Jenkins credential attendance-mongo-uri is empty"
-              exit 1
-            fi
-
-            MONGO_URI_B64=\$(printf '%s' "\$APP_MONGO_URI" | base64 | tr -d '\\n')
-            JWT_SECRET_B64=\$(printf '%s' "\$APP_JWT_SECRET" | base64 | tr -d '\\n')
-
-            ssh -i "\$DEPLOY_KEY" -o StrictHostKeyChecking=no ${params.AZURE_VM_USER}@${params.AZURE_VM_HOST} "
-              set -e
-
-              if ! command -v node >/dev/null 2>&1; then
-                curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-                sudo apt-get install -y nodejs
+          withEnv([
+            "TARGET_HOST=${params.AZURE_VM_HOST}",
+            "TARGET_USER=${params.AZURE_VM_USER}",
+            "TARGET_APP_DIR=${params.AZURE_VM_APP_DIR}",
+            "TARGET_REPO=${params.GIT_REPO_URL}",
+            "TARGET_BRANCH=${params.DEPLOY_BRANCH}"
+          ]) {
+            sh '''
+              DEPLOY_KEY="/var/lib/jenkins/.ssh/ci_deploy_key"
+              if [ ! -f "$DEPLOY_KEY" ]; then
+                echo "Deploy key not found at $DEPLOY_KEY"
+                exit 1
+              fi
+              if [ -z "$APP_JWT_SECRET" ]; then
+                echo "Jenkins credential attendance-jwt-secret is empty"
+                exit 1
+              fi
+              if [ -z "$APP_MONGO_URI" ]; then
+                echo "Jenkins credential attendance-mongo-uri is empty"
+                exit 1
               fi
 
-              if ! command -v nginx >/dev/null 2>&1; then
-                sudo apt-get update
-                sudo apt-get install -y nginx
-              fi
+              MONGO_URI_B64=$(printf '%s' "$APP_MONGO_URI" | base64 | tr -d '\n')
+              JWT_SECRET_B64=$(printf '%s' "$APP_JWT_SECRET" | base64 | tr -d '\n')
 
-              if ! command -v pm2 >/dev/null 2>&1; then
-                sudo npm install -g pm2
-              fi
+              ssh -i "$DEPLOY_KEY" -o StrictHostKeyChecking=no "$TARGET_USER@$TARGET_HOST" \
+                "TARGET_APP_DIR='$TARGET_APP_DIR' TARGET_REPO='$TARGET_REPO' TARGET_BRANCH='$TARGET_BRANCH' MONGO_URI_B64='$MONGO_URI_B64' JWT_SECRET_B64='$JWT_SECRET_B64' bash -s" <<'REMOTE'
+                set -e
 
-              if [ ! -d ${params.AZURE_VM_APP_DIR}/.git ]; then
-                git clone ${params.GIT_REPO_URL} ${params.AZURE_VM_APP_DIR}
-              fi
+                if ! command -v node >/dev/null 2>&1; then
+                  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+                  sudo apt-get install -y nodejs
+                fi
 
-              cd ${params.AZURE_VM_APP_DIR}
-              git fetch --all
-              git checkout ${params.DEPLOY_BRANCH}
-              git pull origin ${params.DEPLOY_BRANCH}
+                if ! command -v nginx >/dev/null 2>&1; then
+                  sudo apt-get update
+                  sudo apt-get install -y nginx
+                fi
 
-              APP_MONGO_URI=\$(echo \${MONGO_URI_B64} | base64 -d)
-              APP_JWT_SECRET=\$(echo \${JWT_SECRET_B64} | base64 -d)
+                if ! command -v pm2 >/dev/null 2>&1; then
+                  sudo npm install -g pm2
+                fi
 
-              cd backend
-              npm install --omit=dev
-              cat > .env <<EOF
+                if [ ! -d "$TARGET_APP_DIR/.git" ]; then
+                  git clone "$TARGET_REPO" "$TARGET_APP_DIR"
+                fi
+
+                cd "$TARGET_APP_DIR"
+                git fetch --all
+                git checkout "$TARGET_BRANCH"
+                git pull origin "$TARGET_BRANCH"
+
+                APP_MONGO_URI=$(echo "$MONGO_URI_B64" | base64 -d)
+                APP_JWT_SECRET=$(echo "$JWT_SECRET_B64" | base64 -d)
+
+                cd backend
+                npm install --omit=dev
+                cat > .env <<EOF
 PORT=5000
-MONGO_URI=\${APP_MONGO_URI}
-JWT_SECRET=\${APP_JWT_SECRET}
+MONGO_URI=${APP_MONGO_URI}
+JWT_SECRET=${APP_JWT_SECRET}
 EOF
 
-              cd ../frontend
-              npm install
-              npm run build
+                cd ../frontend
+                npm install
+                npm run build
 
-              sudo mkdir -p /var/www/attendance
-              sudo rm -rf /var/www/attendance/*
-              sudo cp -r dist/* /var/www/attendance/
+                sudo mkdir -p /var/www/attendance
+                sudo rm -rf /var/www/attendance/*
+                sudo cp -r dist/* /var/www/attendance/
 
-              sudo tee /etc/nginx/sites-available/attendance >/dev/null <<'NGINX'
+                sudo tee /etc/nginx/sites-available/attendance >/dev/null <<'NGINX'
 server {
   listen 80;
   server_name _;
@@ -135,50 +143,53 @@ server {
   location /api/ {
     proxy_pass http://127.0.0.1:5000/api/;
     proxy_http_version 1.1;
-    proxy_set_header Host __DOLLAR__host;
-    proxy_set_header X-Real-IP __DOLLAR__remote_addr;
-    proxy_set_header X-Forwarded-For __DOLLAR__proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto __DOLLAR__scheme;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
   }
 
   location /metrics {
     proxy_pass http://127.0.0.1:5000/metrics;
-    proxy_set_header Host __DOLLAR__host;
+    proxy_set_header Host $host;
   }
 
   location / {
-    try_files __DOLLAR__uri __DOLLAR__uri/ /index.html;
+    try_files $uri $uri/ /index.html;
   }
 }
 NGINX
 
-              sudo sed -i 's/__DOLLAR__/\\$/g' /etc/nginx/sites-available/attendance
-              sudo ln -sf /etc/nginx/sites-available/attendance /etc/nginx/sites-enabled/attendance
-              sudo rm -f /etc/nginx/sites-enabled/default
-              sudo nginx -t
-              sudo systemctl restart nginx
+                sudo ln -sf /etc/nginx/sites-available/attendance /etc/nginx/sites-enabled/attendance
+                sudo rm -f /etc/nginx/sites-enabled/default
+                sudo nginx -t
+                sudo systemctl restart nginx
 
-              cd ${params.AZURE_VM_APP_DIR}/backend
-              if pm2 describe attendance-backend >/dev/null 2>&1; then
-                pm2 restart attendance-backend --update-env
-              else
-                pm2 start server.js --name attendance-backend
-              fi
-              pm2 save
-            "
-          """
+                cd "$TARGET_APP_DIR/backend"
+                if pm2 describe attendance-backend >/dev/null 2>&1; then
+                  pm2 restart attendance-backend --update-env
+                else
+                  pm2 start server.js --name attendance-backend
+                fi
+                pm2 save
+REMOTE
+            '''
+          }
         }
       }
     }
 
     stage('Post Deploy Check') {
       steps {
-        sh """
-          DEPLOY_KEY="/var/lib/jenkins/.ssh/ci_deploy_key"
-          ssh -i "\$DEPLOY_KEY" -o StrictHostKeyChecking=no ${params.AZURE_VM_USER}@${params.AZURE_VM_HOST} '
-            curl -fsS http://localhost/api/health
-          '
-        """
+        withEnv([
+          "TARGET_HOST=${params.AZURE_VM_HOST}",
+          "TARGET_USER=${params.AZURE_VM_USER}"
+        ]) {
+          sh '''
+            DEPLOY_KEY="/var/lib/jenkins/.ssh/ci_deploy_key"
+            ssh -i "$DEPLOY_KEY" -o StrictHostKeyChecking=no "$TARGET_USER@$TARGET_HOST" 'curl -fsS http://localhost/api/health'
+          '''
+        }
       }
     }
   }
