@@ -59,60 +59,60 @@ pipeline {
     stage('Deploy to Azure VM (No Docker)') {
       steps {
         withCredentials([
+          sshUserPrivateKey(credentialsId: 'azure-vm-ssh', keyFileVariable: 'SSH_KEY', usernameVariable: 'SSH_USER'),
           string(credentialsId: 'attendance-jwt-secret', variable: 'APP_JWT_SECRET'),
           string(credentialsId: 'attendance-mongo-uri', variable: 'APP_MONGO_URI')
         ]) {
-          sshagent(credentials: ['azure-vm-ssh']) {
-            sh """
-              MONGO_URI_B64=\$(printf '%s' "$APP_MONGO_URI" | base64 | tr -d '\\n')
-              JWT_SECRET_B64=\$(printf '%s' "$APP_JWT_SECRET" | base64 | tr -d '\\n')
+          sh """
+            MONGO_URI_B64=\$(printf '%s' "$APP_MONGO_URI" | base64 | tr -d '\\n')
+            JWT_SECRET_B64=\$(printf '%s' "$APP_JWT_SECRET" | base64 | tr -d '\\n')
 
-              ssh -o StrictHostKeyChecking=no ${params.AZURE_VM_USER}@${params.AZURE_VM_HOST} "
-                set -e
+            ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ${params.AZURE_VM_USER}@${params.AZURE_VM_HOST} "
+              set -e
 
-                if ! command -v node >/dev/null 2>&1; then
-                  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-                  sudo apt-get install -y nodejs
-                fi
+              if ! command -v node >/dev/null 2>&1; then
+                curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+                sudo apt-get install -y nodejs
+              fi
 
-                if ! command -v nginx >/dev/null 2>&1; then
-                  sudo apt-get update
-                  sudo apt-get install -y nginx
-                fi
+              if ! command -v nginx >/dev/null 2>&1; then
+                sudo apt-get update
+                sudo apt-get install -y nginx
+              fi
 
-                if ! command -v pm2 >/dev/null 2>&1; then
-                  sudo npm install -g pm2
-                fi
+              if ! command -v pm2 >/dev/null 2>&1; then
+                sudo npm install -g pm2
+              fi
 
-                if [ ! -d ${params.AZURE_VM_APP_DIR}/.git ]; then
-                  git clone ${params.GIT_REPO_URL} ${params.AZURE_VM_APP_DIR}
-                fi
+              if [ ! -d ${params.AZURE_VM_APP_DIR}/.git ]; then
+                git clone ${params.GIT_REPO_URL} ${params.AZURE_VM_APP_DIR}
+              fi
 
-                cd ${params.AZURE_VM_APP_DIR}
-                git fetch --all
-                git checkout ${params.DEPLOY_BRANCH}
-                git pull origin ${params.DEPLOY_BRANCH}
+              cd ${params.AZURE_VM_APP_DIR}
+              git fetch --all
+              git checkout ${params.DEPLOY_BRANCH}
+              git pull origin ${params.DEPLOY_BRANCH}
 
-                APP_MONGO_URI=\$(echo ${MONGO_URI_B64} | base64 -d)
-                APP_JWT_SECRET=\$(echo ${JWT_SECRET_B64} | base64 -d)
+              APP_MONGO_URI=\$(echo ${MONGO_URI_B64} | base64 -d)
+              APP_JWT_SECRET=\$(echo ${JWT_SECRET_B64} | base64 -d)
 
-                cd backend
-                npm install --omit=dev
-                cat > .env <<EOF
+              cd backend
+              npm install --omit=dev
+              cat > .env <<EOF
 PORT=5000
 MONGO_URI=\${APP_MONGO_URI}
 JWT_SECRET=\${APP_JWT_SECRET}
 EOF
 
-                cd ../frontend
-                npm install
-                npm run build
+              cd ../frontend
+              npm install
+              npm run build
 
-                sudo mkdir -p /var/www/attendance
-                sudo rm -rf /var/www/attendance/*
-                sudo cp -r dist/* /var/www/attendance/
+              sudo mkdir -p /var/www/attendance
+              sudo rm -rf /var/www/attendance/*
+              sudo cp -r dist/* /var/www/attendance/
 
-                sudo tee /etc/nginx/sites-available/attendance >/dev/null <<NGINX
+              sudo tee /etc/nginx/sites-available/attendance >/dev/null <<NGINX
 server {
   listen 80;
   server_name _;
@@ -139,30 +139,29 @@ server {
 }
 NGINX
 
-                sudo ln -sf /etc/nginx/sites-available/attendance /etc/nginx/sites-enabled/attendance
-                sudo rm -f /etc/nginx/sites-enabled/default
-                sudo nginx -t
-                sudo systemctl restart nginx
+              sudo ln -sf /etc/nginx/sites-available/attendance /etc/nginx/sites-enabled/attendance
+              sudo rm -f /etc/nginx/sites-enabled/default
+              sudo nginx -t
+              sudo systemctl restart nginx
 
-                cd ${params.AZURE_VM_APP_DIR}/backend
-                if pm2 describe attendance-backend >/dev/null 2>&1; then
-                  pm2 restart attendance-backend --update-env
-                else
-                  pm2 start server.js --name attendance-backend
-                fi
-                pm2 save
-              "
-            """
-          }
+              cd ${params.AZURE_VM_APP_DIR}/backend
+              if pm2 describe attendance-backend >/dev/null 2>&1; then
+                pm2 restart attendance-backend --update-env
+              else
+                pm2 start server.js --name attendance-backend
+              fi
+              pm2 save
+            "
+          """
         }
       }
     }
 
     stage('Post Deploy Check') {
       steps {
-        sshagent(credentials: ['azure-vm-ssh']) {
+        withCredentials([sshUserPrivateKey(credentialsId: 'azure-vm-ssh', keyFileVariable: 'SSH_KEY')]) {
           sh """
-            ssh -o StrictHostKeyChecking=no ${params.AZURE_VM_USER}@${params.AZURE_VM_HOST} '
+            ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no ${params.AZURE_VM_USER}@${params.AZURE_VM_HOST} '
               curl -fsS http://localhost/api/health
             '
           """
