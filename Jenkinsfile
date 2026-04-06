@@ -68,6 +68,14 @@ pipeline {
               echo "Deploy key not found at \$DEPLOY_KEY"
               exit 1
             fi
+            if [ -z "\$APP_JWT_SECRET" ]; then
+              echo "Jenkins credential attendance-jwt-secret is empty"
+              exit 1
+            fi
+            if [ -z "\$APP_MONGO_URI" ]; then
+              echo "Jenkins credential attendance-mongo-uri is empty"
+              exit 1
+            fi
 
             MONGO_URI_B64=\$(printf '%s' "\$APP_MONGO_URI" | base64 | tr -d '\\n')
             JWT_SECRET_B64=\$(printf '%s' "\$APP_JWT_SECRET" | base64 | tr -d '\\n')
@@ -117,7 +125,7 @@ EOF
               sudo rm -rf /var/www/attendance/*
               sudo cp -r dist/* /var/www/attendance/
 
-              sudo tee /etc/nginx/sites-available/attendance >/dev/null <<NGINX
+              sudo tee /etc/nginx/sites-available/attendance >/dev/null <<'NGINX'
 server {
   listen 80;
   server_name _;
