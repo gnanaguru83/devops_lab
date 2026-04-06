@@ -135,18 +135,24 @@ server {
   location /api/ {
     proxy_pass http://127.0.0.1:5000/api/;
     proxy_http_version 1.1;
+    proxy_set_header Host __DOLLAR__host;
+    proxy_set_header X-Real-IP __DOLLAR__remote_addr;
+    proxy_set_header X-Forwarded-For __DOLLAR__proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto __DOLLAR__scheme;
   }
 
   location /metrics {
     proxy_pass http://127.0.0.1:5000/metrics;
+    proxy_set_header Host __DOLLAR__host;
   }
 
   location / {
-    try_files /index.html =404;
+    try_files __DOLLAR__uri __DOLLAR__uri/ /index.html;
   }
 }
 NGINX
 
+              sudo sed -i 's/__DOLLAR__/\\$/g' /etc/nginx/sites-available/attendance
               sudo ln -sf /etc/nginx/sites-available/attendance /etc/nginx/sites-enabled/attendance
               sudo rm -f /etc/nginx/sites-enabled/default
               sudo nginx -t
