@@ -69,8 +69,8 @@ pipeline {
               exit 1
             fi
 
-            MONGO_URI_B64=\$(printf '%s' "$APP_MONGO_URI" | base64 | tr -d '\\n')
-            JWT_SECRET_B64=\$(printf '%s' "$APP_JWT_SECRET" | base64 | tr -d '\\n')
+            MONGO_URI_B64=\$(printf '%s' "\$APP_MONGO_URI" | base64 | tr -d '\\n')
+            JWT_SECRET_B64=\$(printf '%s' "\$APP_JWT_SECRET" | base64 | tr -d '\\n')
 
             ssh -i "\$DEPLOY_KEY" -o StrictHostKeyChecking=no ${params.AZURE_VM_USER}@${params.AZURE_VM_HOST} "
               set -e
@@ -98,8 +98,8 @@ pipeline {
               git checkout ${params.DEPLOY_BRANCH}
               git pull origin ${params.DEPLOY_BRANCH}
 
-              APP_MONGO_URI=\$(echo ${MONGO_URI_B64} | base64 -d)
-              APP_JWT_SECRET=\$(echo ${JWT_SECRET_B64} | base64 -d)
+              APP_MONGO_URI=\$(echo \${MONGO_URI_B64} | base64 -d)
+              APP_JWT_SECRET=\$(echo \${JWT_SECRET_B64} | base64 -d)
 
               cd backend
               npm install --omit=dev
